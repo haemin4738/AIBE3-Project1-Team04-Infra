@@ -7,7 +7,7 @@ variable "region" {
 
 variable "prefix" {
   type        = string
-  default     = "teamr4-next5"
+  default     = "team4-next5"
 }
 
 variable "team_tag_value" {
