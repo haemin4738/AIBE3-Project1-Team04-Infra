@@ -11,12 +11,15 @@ mkswap /swapfile
 swapon /swapfile
 echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
 
-# Docker & Git 설치
+# Docker & Docker Compose 설치
 dnf update -y
-dnf install -y docker git
+dnf install -y docker git   # curl 제거 (AL2023 기본 내장)
 
 systemctl enable docker
 systemctl start docker
+
+# ec2-user를 docker 그룹에 추가 (sudo 없이 docker 사용)
+usermod -aG docker ec2-user
 
 # Docker Compose 설치
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
@@ -26,6 +29,18 @@ ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose || true
 
 # Docker Network
 docker network create common || true
+
+# docker ps
+sudo usermod -aG docker ec2-user
+
+# GHCR 로그인 (ec2-user 계정으로)
+runuser -l ec2-user -c "echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_owner}' --password-stdin"
+
+
+#  최초 Docker Image pre-pull
+#    - 처음부터 이미지 받아두기
+runuser -l ec2-user -c "docker pull ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest || true"
+
 
 # MySQL
 docker run -d \
@@ -82,9 +97,6 @@ docker run -d \
   -v /dockerProjects/elasticsearch_1/data:/usr/share/elasticsearch/data \
   docker.elastic.co/elasticsearch/elasticsearch:8.3.3
 
-# GHCR 로그인
-echo "${ghcr_token}" | docker login ghcr.io -u ${ghcr_owner} --password-stdin
-
 # 애플리케이션 디렉토리
 mkdir -p /home/ec2-user/app
 cd /home/ec2-user/app
@@ -140,8 +152,8 @@ services:
       - "8080:8080"
     env_file: [.env]
     environment:
-      SPRING_PROFILES_ACTIVE=prod
-      JAVA_OPTS=-Xms256m -Xmx384m
+      - SPRING_PROFILES_ACTIVE=prod
+      - JAVA_OPTS=-Xms256m -Xmx384m
 
   next5-app-002:
     image: ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
@@ -152,14 +164,15 @@ services:
       - "8081:8080"
     env_file: [.env]
     environment:
-      SPRING_PROFILES_ACTIVE=prod
-      JAVA_OPTS=-Xms256m -Xmx384m
+      - SPRING_PROFILES_ACTIVE=prod
+      - JAVA_OPTS=-Xms256m -Xmx384m
     profiles: [blue-green]
 
 networks:
   common:
     external: true
 EOF
+
 
 # deploy.sh 생성
 cat > deploy.sh <<'EOF'

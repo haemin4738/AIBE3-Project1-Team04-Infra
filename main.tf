@@ -94,7 +94,7 @@ resource "aws_security_group" "sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]   # 혹시 제한하려면 여기를 수정
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   # HTTP
@@ -115,7 +115,7 @@ resource "aws_security_group" "sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Nginx Proxy Manager Admin Panel (Port 81)
+  # NPM Admin (81)
   ingress {
     description = "NPM Admin Page"
     from_port   = 81
@@ -124,7 +124,7 @@ resource "aws_security_group" "sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Outbound: 모든 트래픽 허용
+  # Outbound
   egress {
     from_port   = 0
     to_port     = 0
@@ -137,7 +137,6 @@ resource "aws_security_group" "sg" {
     Team = var.team_tag_value
   }
 }
-
 
 # IAM Role for EC2
 resource "aws_iam_role" "ec2_role" {
@@ -183,7 +182,7 @@ data "aws_ami" "amazon_linux" {
   }
 }
 
-# USER DATA
+# USER DATA (템플릿 적용)
 locals {
   ec2_user_data = templatefile("${path.module}/user_data.tpl", {
     db_root_password       = var.db_root_password
@@ -212,7 +211,6 @@ locals {
     app_domain             = var.app_domain
   })
 }
-
 
 # EC2 Instance
 resource "aws_instance" "ec2" {
