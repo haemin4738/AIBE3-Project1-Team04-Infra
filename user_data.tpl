@@ -13,12 +13,12 @@ echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
 
 # Docker & Docker Compose 설치
 dnf update -y
-dnf install -y docker git   # curl 제거 (AL2023 기본 내장)
+dnf install -y docker git
 
 systemctl enable docker
 systemctl start docker
 
-# ec2-user를 docker 그룹에 추가 (sudo 없이 docker 사용)
+# ec2-user docker 그룹 추가
 usermod -aG docker ec2-user
 
 # Docker Compose 설치
@@ -30,19 +30,14 @@ ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose || true
 # Docker Network
 docker network create common || true
 
-# docker ps
-sudo usermod -aG docker ec2-user
-
-# GHCR 로그인 (ec2-user 계정으로)
+# GHCR 로그인
 runuser -l ec2-user -c "echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_owner}' --password-stdin"
 
-
-#  최초 Docker Image pre-pull
-#    - 처음부터 이미지 받아두기
+# 최초 backend 이미지 미리 Pull
 runuser -l ec2-user -c "docker pull ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest || true"
 
 
-# MySQL
+# 1) MySQL
 docker run -d \
   --name mysql_1 \
   --restart unless-stopped \
@@ -59,7 +54,8 @@ docker run -d \
   --performance_schema=OFF \
   --innodb_buffer_pool_size=256M
 
-# Redis
+
+# 2) Redis
 docker run -d \
   --name redis_1 \
   --restart unless-stopped \
@@ -69,7 +65,8 @@ docker run -d \
   redis:7 \
   redis-server --requirepass "${redis_password}"
 
-# Nginx Proxy Manager
+
+# 🔥 3) Nginx Proxy Manager
 docker run -d \
   --name npm_1 \
   --restart unless-stopped \
@@ -84,7 +81,9 @@ docker run -d \
   -v /dockerProjects/npm_1/letsencrypt:/etc/letsencrypt \
   jc21/nginx-proxy-manager:latest
 
-# ElasticSearch
+
+# 4) Elasticsearch (+Nori 자동 설치)
+# 컨테이너 실행
 docker run -d \
   --name elasticsearch_1 \
   --restart unless-stopped \
@@ -97,7 +96,29 @@ docker run -d \
   -v /dockerProjects/elasticsearch_1/data:/usr/share/elasticsearch/data \
   docker.elastic.co/elasticsearch/elasticsearch:8.3.3
 
-# 애플리케이션 디렉토리
+# ES 100% Ready까지 대기
+echo "⏳ Waiting for Elasticsearch to start..."
+for i in {1..30}; do
+  if curl -s http://localhost:9200 >/dev/null; then
+    echo "Elasticsearch is UP"
+    break
+  fi
+  echo "Waiting ${i}/30..."
+  sleep 3
+done
+
+# Nori plugin 자동 설치
+echo "Installing Nori plugin..."
+docker exec elasticsearch_1 bash -c "yes | bin/elasticsearch-plugin install analysis-nori"
+
+# Elasticsearch 재시작
+docker restart elasticsearch_1
+
+echo "Waiting for Elasticsearch (after plugin install)…"
+sleep 5
+
+
+# APP 디렉토리 생성
 mkdir -p /home/ec2-user/app
 cd /home/ec2-user/app
 
@@ -140,8 +161,13 @@ SPRING__REDIS__PASSWORD=${redis_password}
 
 AWS_S3_BUCKET=${s3_bucket_name}
 
-ELASTIC_URL=${elastic_url}
+AWS_ACCESS_KEY=${aws_access_key}
+AWS_SECRET_KEY=${aws_secret_key}
+
+# ✔ Elasticsearch 컨테이너명 기반
+ELASTIC_URL=http://elasticsearch_1:9200
 EOF
+
 
 # docker-compose.yml 생성
 cat > docker-compose.yml <<EOF
@@ -178,8 +204,7 @@ networks:
     external: true
 EOF
 
-
-# deploy.sh 생성
+# 🔥 deploy.sh 생성
 cat > deploy.sh <<'EOF'
 #!/bin/bash
 set -e
@@ -187,7 +212,7 @@ set -e
 cd /home/ec2-user/app
 
 echo "=== Pulling latest image ==="
-docker pull ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
+docker pull ghcr.io/${GHCR_OWNER}/aibe3-finalproject-team4-backend:latest
 
 if docker ps | grep -q next5-app-001; then
   CURRENT="next5-app-001"
@@ -209,19 +234,13 @@ fi
 
 echo "=== Health Check ==="
 for i in {1..30}; do
-  if curl -fs http://localhost:$PORT_NEW/actuator/health > /dev/null; then
+  if curl -fs http://localhost:$PORT_NEW/actuator/health >/dev/null; then
     echo "Health OK"
     break
   fi
   echo "Waiting... $i/30"
   sleep 3
 done
-
-echo "=== Updating Proxy Manager Forward Host ==="
-docker exec npm_1 sqlite3 /data/database.sqlite \
-  "UPDATE proxy_host SET forward_host='$NEW' WHERE domain_names LIKE '%${app_domain}%';"
-
-docker exec npm_1 nginx -s reload || true
 
 docker-compose stop $CURRENT || true
 docker-compose rm -f $CURRENT || true
@@ -231,5 +250,7 @@ EOF
 
 chmod +x deploy.sh
 
-# 초기 Blue 컨테이너 실행
+
+# 🔥 초기 Blue 컨테이너 실행
 docker-compose up -d next5-app-001
+

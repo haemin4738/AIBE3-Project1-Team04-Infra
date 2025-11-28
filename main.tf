@@ -210,6 +210,8 @@ locals {
     s3_bucket_name         = var.s3_bucket_name
     app_domain             = var.app_domain
     elastic_url            = var.elastic_url
+    aws_access_key         = var.aws_access_key
+    aws_secret_key         = var.aws_secret_key
   })
 }
 
