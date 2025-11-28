@@ -160,6 +160,7 @@ variable "npm_admin_password" {
 variable "elastic_url" {
   type        = string
   description = "ElasticSearch URL"
+  sensitive = true
 }
 variable "aws_access_key" {
   type        = string
@@ -169,4 +170,5 @@ variable "aws_access_key" {
 variable "aws_secret_key" {
   type        = string
   description = "AWS Secret Key"
+  sensitive = true
 }

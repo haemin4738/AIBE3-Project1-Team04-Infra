@@ -31,6 +31,7 @@ ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose || true
 docker network create common || true
 
 # GHCR 로그인
+sudo usermod -aG docker ec2-user
 runuser -l ec2-user -c "echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_owner}' --password-stdin"
 
 # 최초 backend 이미지 미리 Pull
@@ -66,7 +67,7 @@ docker run -d \
   redis-server --requirepass "${redis_password}"
 
 
-# 🔥 3) Nginx Proxy Manager
+# 3) Nginx Proxy Manager
 docker run -d \
   --name npm_1 \
   --restart unless-stopped \
@@ -97,7 +98,7 @@ docker run -d \
   docker.elastic.co/elasticsearch/elasticsearch:8.3.3
 
 # ES 100% Ready까지 대기
-echo "⏳ Waiting for Elasticsearch to start..."
+echo "Waiting for Elasticsearch to start..."
 for i in {1..30}; do
   if curl -s http://localhost:9200 >/dev/null; then
     echo "Elasticsearch is UP"
@@ -164,8 +165,7 @@ AWS_S3_BUCKET=${s3_bucket_name}
 AWS_ACCESS_KEY=${aws_access_key}
 AWS_SECRET_KEY=${aws_secret_key}
 
-# ✔ Elasticsearch 컨테이너명 기반
-ELASTIC_URL=http://elasticsearch_1:9200
+ELASTIC_URL=${elastic_url}
 EOF
 
 
@@ -204,7 +204,7 @@ networks:
     external: true
 EOF
 
-# 🔥 deploy.sh 생성
+# deploy.sh 생성
 cat > deploy.sh <<'EOF'
 #!/bin/bash
 set -e
@@ -251,6 +251,6 @@ EOF
 chmod +x deploy.sh
 
 
-# 🔥 초기 Blue 컨테이너 실행
+# 초기 Blue 컨테이너 실행
 docker-compose up -d next5-app-001
 
