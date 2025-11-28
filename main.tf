@@ -185,10 +185,34 @@ data "aws_ami" "amazon_linux" {
 
 # USER DATA
 locals {
-  ec2_user_data = <<EOF
-${file("user_data.sh")}
-EOF
+  ec2_user_data = templatefile("${path.module}/user_data.tpl", {
+    db_root_password       = var.db_root_password
+    app_db_name            = var.app_db_name
+    redis_password         = var.redis_password
+    ghcr_owner             = var.ghcr_owner
+    ghcr_token             = var.ghcr_token
+    npm_admin_email        = var.npm_admin_email
+    npm_admin_password     = var.npm_admin_password
+    jwt_secret             = var.jwt_secret
+    ai_openai_api_key      = var.ai_openai_api_key
+    ai_huggingface_api_key = var.ai_huggingface_api_key
+    pinecone_api_key       = var.pinecone_api_key
+    pinecone_index_name    = var.pinecone_index_name
+    gmail_sender_email     = var.gmail_sender_email
+    gmail_sender_password  = var.gmail_sender_password
+    unsplash_access_key    = var.unsplash_access_key
+    google_api_key         = var.google_api_key
+    google_cx_id           = var.google_cx_id
+    kakao_client_id        = var.kakao_client_id
+    naver_client_id        = var.naver_client_id
+    naver_client_secret    = var.naver_client_secret
+    google_client_id       = var.google_client_id
+    google_client_secret   = var.google_client_secret
+    s3_bucket_name         = var.s3_bucket_name
+    app_domain             = var.app_domain
+  })
 }
+
 
 # EC2 Instance
 resource "aws_instance" "ec2" {
