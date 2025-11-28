@@ -11,7 +11,7 @@ mkswap /swapfile
 swapon /swapfile
 echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
 
-# Docker & Git 설치 (curl 제거)
+# Docker & Git 설치
 dnf update -y
 dnf install -y docker git
 
