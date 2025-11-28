@@ -209,6 +209,7 @@ locals {
     google_client_secret   = var.google_client_secret
     s3_bucket_name         = var.s3_bucket_name
     app_domain             = var.app_domain
+    elastic_url            = var.elastic_url
   })
 }
 

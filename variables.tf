@@ -156,3 +156,9 @@ variable "npm_admin_password" {
   description = "Initial admin password for Nginx Proxy Manager"
   sensitive   = true
 }
+
+variable "elastic_url" {
+  type        = string
+  description = "ElasticSearch URL"
+  
+}

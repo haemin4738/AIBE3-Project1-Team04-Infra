@@ -108,6 +108,9 @@ JWT_SECRET=${jwt_secret}
 MYSQL_USERNAME=root
 MYSQL_PASSWORD=${db_root_password}
 
+GHCR_OWNER=${ghcr_owner}
+GHCR_TOKEN=${ghcr_token}
+
 AI_OPENAI_API_KEY=${ai_openai_api_key}
 AI_HUGGINGFACE_API_KEY=${ai_huggingface_api_key}
 
@@ -136,6 +139,8 @@ SPRING__REDIS__PORT=6379
 SPRING__REDIS__PASSWORD=${redis_password}
 
 AWS_S3_BUCKET=${s3_bucket_name}
+
+ELASTIC_URL=${elastic_url}
 EOF
 
 # docker-compose.yml 생성
