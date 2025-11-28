@@ -132,7 +132,7 @@ version: "3.8"
 
 services:
   next5-app-001:
-    image: ghcr.io/${ghcr_owner}/AIBE3_FinalProject_Team4_BE/backend:latest
+    image: ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
     container_name: next5-app-001
     restart: unless-stopped
     networks: [common]
@@ -144,7 +144,7 @@ services:
       JAVA_OPTS=-Xms256m -Xmx384m
 
   next5-app-002:
-    image: ghcr.io/${ghcr_owner}/AIBE3_FinalProject_Team4_BE/backend:latest
+    image: ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
     container_name: next5-app-002
     restart: unless-stopped
     networks: [common]
@@ -169,7 +169,7 @@ set -e
 cd /home/ec2-user/app
 
 echo "=== Pulling latest image ==="
-docker pull ghcr.io/${ghcr_owner}/AIBE3_FinalProject_Team4_BE/backend:latest
+docker pull ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
 
 if docker ps | grep -q next5-app-001; then
   CURRENT="next5-app-001"
