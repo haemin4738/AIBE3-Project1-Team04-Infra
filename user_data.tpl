@@ -1,44 +1,48 @@
 #!/bin/bash
 set -e
 
-# 기본 설정
+###############################################
+# 1) 기본 설정
+###############################################
 timedatectl set-timezone Asia/Seoul
 
-# 스왑 4GB
+# Swap
 dd if=/dev/zero of=/swapfile bs=128M count=32
 chmod 600 /swapfile
 mkswap /swapfile
 swapon /swapfile
 echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
 
-# Docker & Docker Compose 설치
+
+###############################################
+# 2) Docker + Compose 설치
+###############################################
 dnf update -y
 dnf install -y docker git
 
 systemctl enable docker
 systemctl start docker
 
-# ec2-user docker 그룹 추가
 usermod -aG docker ec2-user
 
-# Docker Compose 설치
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
   -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose || true
 
-# Docker Network
 docker network create common || true
 
-# GHCR 로그인
-sudo usermod -aG docker ec2-user
-runuser -l ec2-user -c "echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_owner}' --password-stdin"
 
-# 최초 backend 이미지 미리 Pull
+###############################################
+# 3) GHCR 로그인
+###############################################
+runuser -l ec2-user -c "echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_owner}' --password-stdin"
 runuser -l ec2-user -c "docker pull ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest || true"
 
 
-# 1) MySQL
+###############################################
+# 4) MySQL 실행
+###############################################
 docker run -d \
   --name mysql_1 \
   --restart unless-stopped \
@@ -56,7 +60,9 @@ docker run -d \
   --innodb_buffer_pool_size=256M
 
 
-# 2) Redis
+###############################################
+# 5) Redis 실행
+###############################################
 docker run -d \
   --name redis_1 \
   --restart unless-stopped \
@@ -67,7 +73,9 @@ docker run -d \
   redis-server --requirepass "${redis_password}"
 
 
-# 3) Nginx Proxy Manager
+###############################################
+# 6) Nginx Proxy Manager 실행
+###############################################
 docker run -d \
   --name npm_1 \
   --restart unless-stopped \
@@ -83,49 +91,66 @@ docker run -d \
   jc21/nginx-proxy-manager:latest
 
 
-# 4) Elasticsearch (+Nori 자동 설치)
-# 컨테이너 실행
+###############################################
+# 7) Elasticsearch + Nori 플러그인 설치 (이미지 생성)
+###############################################
+mkdir -p /dockerProjects/elasticsearch/data
+rm -rf /dockerProjects/elasticsearch/data/*
+chown -R 1000:1000 /dockerProjects/elasticsearch/data
+
+echo "▶ Step 1: Building temporary ES for plugin"
 docker run -d \
-  --name elasticsearch_1 \
+  --name es_tmp \
+  --network common \
+  -e discovery.type=single-node \
+  -e xpack.security.enabled=false \
+  -e ES_JAVA_OPTS="-Xms256m -Xmx256m" \
+  -v /dockerProjects/elasticsearch/data:/usr/share/elasticsearch/data \
+  docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+
+echo "Waiting for ES to be ready..."
+sleep 25
+
+echo "▶ Step 2: Install Nori"
+docker exec es_tmp bash -c "yes | bin/elasticsearch-plugin install analysis-nori"
+
+echo "▶ Step 3: Commit custom image"
+docker stop es_tmp
+docker commit es_tmp custom-elasticsearch:8.18.8-nori
+docker rm es_tmp
+
+
+###############################################
+# 8) Elasticsearch 최종 실행
+###############################################
+docker run -d \
+  --name elasticsearch \
   --restart unless-stopped \
   --network common \
   -p 9200:9200 \
   -e discovery.type=single-node \
   -e xpack.security.enabled=false \
-  -e ES_JAVA_OPTS="-Xms256m -Xmx256m" \
-  -e TZ=Asia/Seoul \
-  -v /dockerProjects/elasticsearch_1/data:/usr/share/elasticsearch/data \
-  docker.elastic.co/elasticsearch/elasticsearch:8.3.3
-
-# ES 100% Ready까지 대기
-echo "Waiting for Elasticsearch to start..."
-for i in {1..30}; do
-  if curl -s http://localhost:9200 >/dev/null; then
-    echo "Elasticsearch is UP"
-    break
-  fi
-  echo "Waiting ${i}/30..."
-  sleep 3
-done
-
-# Nori plugin 자동 설치
-echo "Installing Nori plugin..."
-docker exec elasticsearch_1 bash -c "yes | bin/elasticsearch-plugin install analysis-nori"
-
-# Elasticsearch 재시작
-docker restart elasticsearch_1
-
-echo "Waiting for Elasticsearch (after plugin install)…"
-sleep 5
+  -e ES_JAVA_OPTS="-Xms512m -Xmx512m" \
+  -v /dockerProjects/elasticsearch/data:/usr/share/elasticsearch/data \
+  custom-elasticsearch:8.18.8-nori
 
 
-# APP 디렉토리 생성
+###############################################
+# 9) APP 디렉토리 생성
+###############################################
 mkdir -p /home/ec2-user/app
+chown -R ec2-user:ec2-user /home/ec2-user/app
+
 cd /home/ec2-user/app
 
-# .env 생성
+
+###############################################
+# 10) .env 생성
+###############################################
 cat > .env <<EOF
 JWT_SECRET=${jwt_secret}
+JWT_ACCESS_EXP=${jwt_access_exp}
+JWT_REFRESH_EXP=${jwt_refresh_exp}
 
 MYSQL_USERNAME=root
 MYSQL_PASSWORD=${db_root_password}
@@ -133,16 +158,19 @@ MYSQL_PASSWORD=${db_root_password}
 GHCR_OWNER=${ghcr_owner}
 GHCR_TOKEN=${ghcr_token}
 
-AI_OPENAI_API_KEY=${ai_openai_api_key}
+SPRING_AI_OPENAI_API_KEY=${spring_ai_openai_api_key}
 AI_HUGGINGFACE_API_KEY=${ai_huggingface_api_key}
 
-PINECONE_API_KEY=${pinecone_api_key}
-PINECONE_INDEX_NAME=${pinecone_index_name}
+SPRING_AI_VECTORSTORE_PINECONE_API_KEY=${spring_ai_vectorstore_pinecone_api_key}
+SPRING_AI_VECTORSTORE_PINECONE_INDEX_NAME=${spring_ai_vectorstore_pinecone_index_name}
 
 GMAIL_SENDER_EMAIL=${gmail_sender_email}
 GMAIL_SENDER_PASSWORD=${gmail_sender_password}
 
+UNSPLASH_BASE_URL=${unsplash_base_url}
 UNSPLASH_ACCESS_KEY=${unsplash_access_key}
+
+GOOGLE_BASE_URL=${google_base_url}
 GOOGLE_API_KEY=${google_api_key}
 GOOGLE_CX_ID=${google_cx_id}
 
@@ -160,18 +188,17 @@ SPRING__REDIS__HOST=redis_1
 SPRING__REDIS__PORT=6379
 SPRING__REDIS__PASSWORD=${redis_password}
 
-AWS_S3_BUCKET=${s3_bucket_name}
-AWS_ACCESS_KEY=${aws_access_key}
-AWS_SECRET_KEY=${aws_secret_key}
+CLOUD_AWS_S3_BUCKET=${cloud_aws_s3_bucket}
+CLOUD_AWS_CREDENTIALS_ACCESS_KEY=${cloud_aws_credentials_access_key}
+CLOUD_AWS_CREDENTIALS_SECRET_KEY=${cloud_aws_credentials_secret_key}
 
-NPM_ADMIN_EMAIL=${npm_admin_email}
-NPM_ADMIN_PASSWORD=${npm_admin_password}
-
-SPRING_ELASTICSEARCH_URIS=${spring_elasticsearch_uris}
+SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
 EOF
 
 
-# docker-compose.yml 생성
+###############################################
+# 11) docker-compose 생성
+###############################################
 cat > docker-compose.yml <<EOF
 version: "3.8"
 
@@ -184,9 +211,6 @@ services:
     ports:
       - "8080:8080"
     env_file: [.env]
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - JAVA_OPTS=-Xms256m -Xmx384m
 
   next5-app-002:
     image: ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
@@ -196,9 +220,6 @@ services:
     ports:
       - "8081:8080"
     env_file: [.env]
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - JAVA_OPTS=-Xms256m -Xmx384m
     profiles: [blue-green]
 
 networks:
@@ -206,7 +227,10 @@ networks:
     external: true
 EOF
 
-# deploy.sh 생성
+
+###############################################
+# 12) deploy.sh 생성
+###############################################
 cat > deploy.sh <<'EOF'
 #!/bin/bash
 set -e
@@ -214,7 +238,6 @@ set -e
 cd /home/ec2-user/app
 
 echo "=== Pulling latest image ==="
-docker pull ghcr.io/${GHCR_OWNER}/aibe3-finalproject-team4-backend:latest
 
 if docker ps | grep -q next5-app-001; then
   CURRENT="next5-app-001"
@@ -226,23 +249,24 @@ else
   PORT_NEW=8080
 fi
 
-echo "Switching from $CURRENT to $NEW"
-
-if [ "$NEW" = "next5-app-002" ]; then
-  docker-compose --profile blue-green up -d next5-app-002
-else
-  docker-compose up -d next5-app-001
-fi
+docker-compose pull $NEW
+docker-compose up -d --force-recreate $NEW
 
 echo "=== Health Check ==="
-for i in {1..30}; do
+SUCCESS=false
+for i in {1..40}; do
   if curl -fs http://localhost:$PORT_NEW/actuator/health >/dev/null; then
-    echo "Health OK"
+    SUCCESS=true
     break
   fi
-  echo "Waiting... $i/30"
   sleep 3
 done
+
+if [ "$SUCCESS" = false ]; then
+  docker-compose stop $NEW || true
+  docker-compose rm -f $NEW || true
+  exit 1
+fi
 
 docker-compose stop $CURRENT || true
 docker-compose rm -f $CURRENT || true
@@ -253,6 +277,9 @@ EOF
 chmod +x deploy.sh
 
 
-# 초기 Blue 컨테이너 실행
+###############################################
+# 13) 초기 Blue 환경 실행
+###############################################
 docker-compose up -d next5-app-001
 
+echo "=== INIT DONE ==="

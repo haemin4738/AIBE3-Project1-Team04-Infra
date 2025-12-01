@@ -185,6 +185,9 @@ data "aws_ami" "amazon_linux" {
 # USER DATA (템플릿 적용)
 locals {
   ec2_user_data = templatefile("${path.module}/user_data.tpl", {
+    jwt_secret             = var.jwt_secret
+    jwt_access_exp        = var.jwt_access_exp
+    jwt_refresh_exp       = var.jwt_refresh_exp
     db_root_password       = var.db_root_password
     app_db_name            = var.app_db_name
     redis_password         = var.redis_password
@@ -194,12 +197,18 @@ locals {
     npm_admin_password     = var.npm_admin_password
     jwt_secret             = var.jwt_secret
     ai_openai_api_key      = var.ai_openai_api_key
+    spring_ai_openai_api_key = var.spring_ai_openai_api_key
     ai_huggingface_api_key = var.ai_huggingface_api_key
-    pinecone_api_key       = var.pinecone_api_key
-    pinecone_index_name    = var.pinecone_index_name
+    spring_ai_vectorstore_pinecone_api_key       = var.spring_ai_vectorstore_pinecone_api_key
+    spring_ai_vectorstore_pinecone_index_name    = var.spring_ai_vectorstore_pinecone_index_name
     gmail_sender_email     = var.gmail_sender_email
     gmail_sender_password  = var.gmail_sender_password
+    mail_host              = var.mail_host
+    mail_port              = var.mail_port
+    mail_protocol          = var.mail_protocol
+    unsplash_base_url      = var.unsplash_base_url
     unsplash_access_key    = var.unsplash_access_key
+    google_base_url        = var.google_base_url
     google_api_key         = var.google_api_key
     google_cx_id           = var.google_cx_id
     kakao_client_id        = var.kakao_client_id
@@ -207,11 +216,12 @@ locals {
     naver_client_secret    = var.naver_client_secret
     google_client_id       = var.google_client_id
     google_client_secret   = var.google_client_secret
-    s3_bucket_name         = var.aws_s3_bucket
+    cloud_aws_s3_bucket          = var.cloud_aws_s3_bucket
     app_domain             = var.app_domain
     spring_elasticsearch_uris    = var.spring_elasticsearch_uris
-    aws_access_key         = var.aws_access_key
-    aws_secret_key         = var.aws_secret_key
+    cloud_aws_credentials_access_key         = var.cloud_aws_credentials_access_key
+    cloud_aws_credentials_secret_key         = var.cloud_aws_credentials_secret_key
+    cloud_aws_region_static                   = var.cloud_aws_region_static
   })
 }
 
@@ -256,7 +266,7 @@ resource "aws_eip_association" "eip_assoc" {
 
 # S3 Bucket
 resource "aws_s3_bucket" "app_bucket" {
-  bucket = var.aws_s3_bucket
+  bucket = var.cloud_aws_s3_bucket
 
   tags = {
     Name = "${var.prefix}-bucket"

@@ -74,18 +74,23 @@ variable "ai_openai_api_key" {
   sensitive   = true
 }
 
+variable "spring_ai_openai_api_key" {
+  type        = string
+  sensitive   = true
+}
+
 variable "ai_huggingface_api_key" {
   type        = string
   sensitive   = true
 }
 
 # Pinecone Vector DB
-variable "pinecone_api_key" {
+variable "spring_ai_vectorstore_pinecone_api_key" {
   type        = string
   sensitive   = true
 }
 
-variable "pinecone_index_name" {
+variable "spring_ai_vectorstore_pinecone_index_name" {
   type        = string
 }
 
@@ -100,11 +105,17 @@ variable "gmail_sender_password" {
 }
 
 # External APIs
+variable "unsplash_base_url" {
+  type = string
+}
 variable "unsplash_access_key" {
   type      = string
   sensitive = true
 }
 
+variable "google_base_url" {
+  type = string
+}
 variable "google_api_key" {
   type      = string
   sensitive = true
@@ -141,8 +152,13 @@ variable "google_client_secret" {
 }
 
 # S3
-variable "aws_s3_bucket" {
+variable "cloud_aws_s3_bucket" {
   type = string
+}
+
+variable "cloud_aws_region_static" {
+  type = string
+
 }
 
 # NPM
@@ -162,13 +178,36 @@ variable "spring_elasticsearch_uris" {
   description = "ElasticSearch URL"
   sensitive = true
 }
-variable "aws_access_key" {
+variable "cloud_aws_credentials_access_key" {
   type        = string
   description = "AWS Access Key"
   sensitive = true
 }
-variable "aws_secret_key" {
+variable "cloud_aws_credentials_secret_key" {
   type        = string
   description = "AWS Secret Key"
   sensitive = true
+}
+
+variable "jwt_access_exp" {
+  type       = number
+  description = "JWT Access Token Expiration Time in milliseconds"
+}
+
+variable "jwt_refresh_exp" {
+  type       = number
+  description = "JWT Refresh Token Expiration Time in milliseconds"
+}
+
+variable "mail_host" {
+  type        = string
+  description = "Mail service host"
+}
+variable "mail_port" {
+  type        = number
+  description = "Mail service port"
+}
+variable "mail_protocol" {
+  type        = string
+  description = "Mail service protocol"
 }
