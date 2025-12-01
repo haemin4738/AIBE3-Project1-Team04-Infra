@@ -207,9 +207,9 @@ locals {
     naver_client_secret    = var.naver_client_secret
     google_client_id       = var.google_client_id
     google_client_secret   = var.google_client_secret
-    s3_bucket_name         = var.s3_bucket_name
+    s3_bucket_name         = var.aws_s3_bucket
     app_domain             = var.app_domain
-    elastic_url            = var.elastic_url
+    spring_elasticsearch_uris    = var.spring_elasticsearch_uris
     aws_access_key         = var.aws_access_key
     aws_secret_key         = var.aws_secret_key
   })
@@ -256,7 +256,7 @@ resource "aws_eip_association" "eip_assoc" {
 
 # S3 Bucket
 resource "aws_s3_bucket" "app_bucket" {
-  bucket = var.s3_bucket_name
+  bucket = var.aws_s3_bucket
 
   tags = {
     Name = "${var.prefix}-bucket"

@@ -141,7 +141,7 @@ variable "google_client_secret" {
 }
 
 # S3
-variable "s3_bucket_name" {
+variable "aws_s3_bucket" {
   type = string
 }
 
@@ -157,7 +157,7 @@ variable "npm_admin_password" {
   sensitive   = true
 }
 
-variable "elastic_url" {
+variable "spring_elasticsearch_uris" {
   type        = string
   description = "ElasticSearch URL"
   sensitive = true

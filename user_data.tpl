@@ -161,11 +161,13 @@ SPRING__REDIS__PORT=6379
 SPRING__REDIS__PASSWORD=${redis_password}
 
 AWS_S3_BUCKET=${s3_bucket_name}
-
 AWS_ACCESS_KEY=${aws_access_key}
 AWS_SECRET_KEY=${aws_secret_key}
 
-ELASTIC_URL=${elastic_url}
+NPM_ADMIN_EMAIL=${npm_admin_email}
+NPM_ADMIN_PASSWORD=${npm_admin_password}
+
+SPRING_ELASTICSEARCH_URIS=${spring_elasticsearch_uris}
 EOF
 
 
