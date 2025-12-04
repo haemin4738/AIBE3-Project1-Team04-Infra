@@ -224,7 +224,10 @@ else
   PORT_NEW=8080
 fi
 
+# Pull NEW image
 docker-compose pull $NEW
+
+# NEW container recreate
 docker-compose up -d --force-recreate $NEW
 
 echo "=== Health Check ==="
@@ -240,13 +243,24 @@ done
 if [ "$SUCCESS" = false ]; then
   docker-compose stop $NEW || true
   docker-compose rm -f $NEW || true
+  echo "❌ Health check failed → rollback"
   exit 1
 fi
 
+# Stop and remove CURRENT
 docker-compose stop $CURRENT || true
 docker-compose rm -f $CURRENT || true
 
+# 실제로 배포된 이미지 SHA 저장
+IMAGE_SHA=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/${GHCR_OWNER}/aibe3-finalproject-team4-backend:latest)
+DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "IMAGE_SHA=$IMAGE_SHA" > deployed_version.txt
+echo "DEPLOYED_AT=$DEPLOY_TIME" >> deployed_version.txt
+echo "ACTIVE_CONTAINER=$NEW" >> deployed_version.txt
+
 echo "Deployment complete → Active: $NEW"
+
 EOF
 
 chmod +x deploy.sh
