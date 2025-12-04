@@ -211,3 +211,12 @@ variable "mail_protocol" {
   type        = string
   description = "Mail service protocol"
 }
+
+variable "pixabay_access_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "pixabay_base_url" {
+  type = string
+}

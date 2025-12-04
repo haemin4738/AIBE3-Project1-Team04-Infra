@@ -222,6 +222,8 @@ locals {
     cloud_aws_credentials_access_key         = var.cloud_aws_credentials_access_key
     cloud_aws_credentials_secret_key         = var.cloud_aws_credentials_secret_key
     cloud_aws_region_static                   = var.cloud_aws_region_static
+    pixabay_access_key     = var.pixabay_access_key
+    pixabay_base_url      = var.pixabay_base_url
   })
 }
 
