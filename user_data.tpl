@@ -255,4 +255,122 @@ chmod +x deploy.sh
 # 13) 초기 Blue 환경 실행
 docker-compose up -d next5-app-001
 
+# 기존 스크립트 끝에 추가
+
+# 14) 모니터링 스택 설정
+mkdir -p /home/ec2-user/monitoring/{prometheus,grafana/provisioning/{datasources,dashboards}}
+chown -R ec2-user:ec2-user /home/ec2-user/monitoring
+
+# Prometheus 설정
+cat > /home/ec2-user/monitoring/prometheus/prometheus.yml <<EOF
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'spring-boot-apps'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: 
+        - 'next5-app-001:8080'
+        - 'next5-app-002:8080'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(next5-app-.*):.*'
+        replacement: '\$1'
+
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['mysql_1:3306']
+    
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis_1:6379']
+EOF
+
+# Grafana 데이터소스 프로비저닝
+cat > /home/ec2-user/monitoring/grafana/provisioning/datasources/prometheus.yml <<EOF
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://next5-prometheus:9090
+    isDefault: true
+EOF
+
+# 모니터링 Docker Compose
+cat > /home/ec2-user/monitoring/docker-compose.yml <<EOF
+version: "3.8"
+
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: next5-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    networks:
+      - common
+
+  grafana:
+    image: grafana/grafana
+    container_name: next5-grafana
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin1234
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    networks:
+      - common
+
+  influxdb:
+    image: influxdb:1.8
+    container_name: next5-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=next5
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin1234
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+    networks:
+      - common
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  influxdb-data:
+
+networks:
+  common:
+    external: true
+EOF
+
+# 모니터링 스택 시작
+cd /home/ec2-user/monitoring
+runuser -l ec2-user -c "cd /home/ec2-user/monitoring && docker-compose up -d"
+
+echo "=== MONITORING SETUP DONE ==="
+
 echo "=== INIT DONE ==="
