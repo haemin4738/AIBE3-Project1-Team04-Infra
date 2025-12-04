@@ -1,9 +1,7 @@
 #!/bin/bash
 set -e
 
-###############################################
 # 1) 기본 설정
-###############################################
 timedatectl set-timezone Asia/Seoul
 
 # Swap
@@ -14,9 +12,7 @@ swapon /swapfile
 echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
 
 
-###############################################
 # 2) Docker + Compose 설치
-###############################################
 dnf update -y
 dnf install -y docker git
 
@@ -33,16 +29,11 @@ ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose || true
 docker network create common || true
 
 
-###############################################
 # 3) GHCR 로그인
-###############################################
 runuser -l ec2-user -c "echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_owner}' --password-stdin"
 runuser -l ec2-user -c "docker pull ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest || true"
 
-
-###############################################
 # 4) MySQL 실행
-###############################################
 docker run -d \
   --name mysql_1 \
   --restart unless-stopped \
@@ -60,9 +51,7 @@ docker run -d \
   --innodb_buffer_pool_size=256M
 
 
-###############################################
 # 5) Redis 실행
-###############################################
 docker run -d \
   --name redis_1 \
   --restart unless-stopped \
@@ -73,9 +62,7 @@ docker run -d \
   redis-server --requirepass "${redis_password}"
 
 
-###############################################
 # 6) Nginx Proxy Manager 실행
-###############################################
 docker run -d \
   --name npm_1 \
   --restart unless-stopped \
@@ -91,9 +78,7 @@ docker run -d \
   jc21/nginx-proxy-manager:latest
 
 
-###############################################
 # 7) Elasticsearch + Nori 플러그인 설치 (이미지 생성)
-###############################################
 mkdir -p /dockerProjects/elasticsearch/data
 rm -rf /dockerProjects/elasticsearch/data/*
 chown -R 1000:1000 /dockerProjects/elasticsearch/data
@@ -120,9 +105,7 @@ docker commit es_tmp custom-elasticsearch:8.18.8-nori
 docker rm es_tmp
 
 
-###############################################
 # 8) Elasticsearch 최종 실행
-###############################################
 docker run -d \
   --name elasticsearch \
   --restart unless-stopped \
@@ -135,18 +118,14 @@ docker run -d \
   custom-elasticsearch:8.18.8-nori
 
 
-###############################################
 # 9) APP 디렉토리 생성
-###############################################
 mkdir -p /home/ec2-user/app
 chown -R ec2-user:ec2-user /home/ec2-user/app
 
 cd /home/ec2-user/app
 
 
-###############################################
 # 10) .env 생성
-###############################################
 cat > .env <<EOF
 JWT_SECRET=${jwt_secret}
 JWT_ACCESS_EXP=${jwt_access_exp}
@@ -196,9 +175,7 @@ SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
 EOF
 
 
-###############################################
 # 11) docker-compose 생성
-###############################################
 cat > docker-compose.yml <<EOF
 version: "3.8"
 
@@ -228,9 +205,7 @@ networks:
 EOF
 
 
-###############################################
 # 12) deploy.sh 생성
-###############################################
 cat > deploy.sh <<'EOF'
 #!/bin/bash
 set -e
@@ -277,9 +252,7 @@ EOF
 chmod +x deploy.sh
 
 
-###############################################
 # 13) 초기 Blue 환경 실행
-###############################################
 docker-compose up -d next5-app-001
 
 echo "=== INIT DONE ==="
