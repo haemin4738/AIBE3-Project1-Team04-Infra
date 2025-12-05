@@ -175,6 +175,13 @@ SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
 
 PIXABAY_ACCESS_KEY=${pixabay_access_key}
 PIXABAY_BASE_URL=${pixabay_base_url}
+
+NPM_HOST=localhost:81
+NPM_PROXY_ID=1
+NPM_EMAIL=${npm_admin_email}
+NPM_PASSWORD=${npm_admin_password}
+
+PROD_OAUTH2_REDIRECT_URI=${PROD_OAUTH2_REDIRECT_URI}
 EOF
 
 
@@ -183,86 +190,138 @@ cat > docker-compose.yml <<EOF
 version: "3.8"
 
 services:
-  next5-app-001:
-    image: ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
-    container_name: next5-app-001
+  app-blue:
+    image: ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
+    container_name: next5-app-blue
     restart: unless-stopped
-    networks: [common]
-    ports:
-      - "8080:8080"
-    env_file: [.env]
+    networks:
+      - common
+    expose:
+      - "8080"
+    env_file:
+      - .env
 
-  next5-app-002:
-    image: ghcr.io/${ghcr_owner}/aibe3-finalproject-team4-backend:latest
-    container_name: next5-app-002
+  app-green:
+    image: ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
+    container_name: next5-app-green
     restart: unless-stopped
-    networks: [common]
-    ports:
-      - "8081:8080"
-    env_file: [.env]
-    profiles: [blue-green]
+    networks:
+      - common
+    expose:
+      - "8080"
+    env_file:
+      - .env
 
 networks:
   common:
     external: true
+
 EOF
 
 
 # 12) deploy.sh 생성
-cat > deploy.sh <<'EOF'
 #!/bin/bash
 set -e
 
 cd /home/ec2-user/app
 
-echo "=== Pulling latest image ==="
-
-if docker ps | grep -q next5-app-001; then
-  CURRENT="next5-app-001"
-  NEW="next5-app-002"
-  PORT_NEW=8081
-else
-  CURRENT="next5-app-002"
-  NEW="next5-app-001"
-  PORT_NEW=8080
+# .env 로드
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
 fi
 
-# Pull NEW image
-docker-compose pull $NEW
+echo "=== 🔍 Checking current live container ==="
 
-# NEW container recreate
-docker-compose up -d --force-recreate $NEW
+# 현재 라이브 컨테이너 판단 (blue or green)
+if docker ps --format "{{.Names}}" | grep -q "next5-app-blue"; then
+  LIVE="blue"
+  IDLE="green"
+else
+  LIVE="green"
+  IDLE="blue"
+fi
 
-echo "=== Health Check ==="
+echo "🔵 LIVE: $LIVE"
+echo "🟢 IDLE: $IDLE"
+echo "======================================"
+
+echo "=== 📦 Pulling latest backend image ==="
+docker pull ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
+
+echo "=== 🚀 Deploying to IDLE container: $IDLE ==="
+docker-compose up -d app-$IDLE
+
+echo "=== ⏳ Health check starting... ==="
+
 SUCCESS=false
-for i in {1..40}; do
-  if curl -fs http://localhost:$PORT_NEW/actuator/health >/dev/null; then
-    SUCCESS=true
-    break
+for i in {1..20}; do
+  # IDLE 컨테이너의 Docker 네트워크 IP 조회
+  CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' next5-app-$IDLE || echo "")
+
+  if [ -n "$CONTAINER_IP" ]; then
+    if curl -fs "http://${CONTAINER_IP}:8080/actuator/health" | grep -q '"status":"UP"'; then
+      SUCCESS=true
+      break
+    fi
   fi
+
+  echo "⏳ Waiting for container to be UP... ($i/20)"
   sleep 3
 done
 
 if [ "$SUCCESS" = false ]; then
-  docker-compose stop $NEW || true
-  docker-compose rm -f $NEW || true
-  echo "❌ Health check failed → rollback"
+  echo "❌ Health check failed! Rolling back..."
+  docker-compose stop app-$IDLE || true
   exit 1
 fi
 
-# Stop and remove CURRENT
-docker-compose stop $CURRENT || true
-docker-compose rm -f $CURRENT || true
+echo "✅ Health check passed!"
 
-# 실제로 배포된 이미지 SHA 저장
-IMAGE_SHA=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/${GHCR_OWNER}/aibe3-finalproject-team4-backend:latest)
-DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+echo "=== 🔑 Logging in to NPM (session-based) ==="
 
-echo "IMAGE_SHA=$IMAGE_SHA" > deployed_version.txt
-echo "DEPLOYED_AT=$DEPLOY_TIME" >> deployed_version.txt
-echo "ACTIVE_CONTAINER=$NEW" >> deployed_version.txt
+LOGIN_RESPONSE=$(curl -s -X POST "http://${NPM_HOST}/api/tokens" \
+  -H "Content-Type: application/json" \
+  --data "{\"identity\": \"${NPM_EMAIL}\", \"secret\": \"${NPM_PASSWORD}\"}")
 
-echo "Deployment complete → Active: $NEW"
+TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.token')
+
+if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+  echo "❌ NPM login failed!"
+  echo "Response: $LOGIN_RESPONSE"
+  exit 1
+fi
+
+echo "🔑 NPM login OK, token issued."
+
+echo "=== 🔄 Switching NPM Proxy to IDLE container ==="
+
+# forwardHost만 blue/green으로 바꿔주는 요청
+curl -s -X PUT "http://${NPM_HOST}/api/nginx/proxy-hosts/${NPM_PROXY_ID}" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data "{
+    \"forwardScheme\": \"http\",
+    \"forwardHost\": \"next5-app-$IDLE\",
+    \"forwardPort\": 8080
+  }" >/dev/null
+
+echo "🎯 NPM switched → LIVE is now next5-app-$IDLE"
+
+echo "=== 🧹 Cleaning up old LIVE container ==="
+docker-compose stop app-$LIVE || true
+docker-compose rm -f app-$LIVE || true
+
+echo "=== 📄 Saving deploy info ==="
+
+IMAGE_SHA=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest || echo "unknown")
+
+cat > deployed_version.txt <<EOF2
+LIVE=$IDLE
+DEPLOYED_AT=$(date '+%Y-%m-%d %H:%M:%S')
+IMAGE_SHA=$IMAGE_SHA
+EOF2
+
+echo "🎉 Deployment complete → ACTIVE: next5-app-$IDLE"
 
 EOF
 

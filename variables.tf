@@ -220,3 +220,8 @@ variable "pixabay_access_key" {
 variable "pixabay_base_url" {
   type = string
 }
+
+variable "PROD_OAUTH2_REDIRECT_URI" {
+  type      = string
+  description = "Production OAuth2 Redirect URI"
+}
