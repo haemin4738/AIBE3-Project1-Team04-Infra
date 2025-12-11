@@ -173,6 +173,8 @@ CLOUD_AWS_CREDENTIALS_SECRET_KEY=${cloud_aws_credentials_secret_key}
 
 SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
 
+GOOGLE_CLOUD_CREDENTIALS_JSON=${google_cloud_credentials_json}
+
 PIXABAY_ACCESS_KEY=${pixabay_access_key}
 PIXABAY_BASE_URL=${pixabay_base_url}
 

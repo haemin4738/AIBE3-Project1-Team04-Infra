@@ -225,6 +225,7 @@ locals {
     pixabay_access_key     = var.pixabay_access_key
     pixabay_base_url      = var.pixabay_base_url
     PROD_OAUTH2_REDIRECT_URI = var.PROD_OAUTH2_REDIRECT_URI
+    google_cloud_credentials_json = var.google_cloud_credentials_json
   })
 }
 

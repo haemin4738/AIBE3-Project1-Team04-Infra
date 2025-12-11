@@ -225,3 +225,8 @@ variable "PROD_OAUTH2_REDIRECT_URI" {
   type      = string
   description = "Production OAuth2 Redirect URI"
 }
+
+variable "google_cloud_credentials_json" {
+  type      = string
+  sensitive = true
+}
