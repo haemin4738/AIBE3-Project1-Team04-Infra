@@ -187,30 +187,18 @@ EOF
 
 # 11) docker-compose 생성
 cat > docker-compose.yml <<EOF
-version: "3.8"
-
 services:
-  app-blue:
-    image: ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
-    container_name: next5-app-blue
-    restart: unless-stopped
-    networks:
-      - common
-    expose:
-      - "8080"
-    env_file:
-      - .env
-
-  app-green:
+  next5-app-green:
     image: ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
     container_name: next5-app-green
-    restart: unless-stopped
-    networks:
-      - common
-    expose:
-      - "8080"
-    env_file:
-      - .env
+    networks: [common]
+    env_file: [.env]
+
+  next5-app-blue:
+    image: ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
+    container_name: next5-app-blue
+    networks: [common]
+    env_file: [.env]
 
 networks:
   common:
@@ -223,16 +211,21 @@ EOF
 #!/bin/bash
 set -e
 
+echo "==== 🔵🟢 Blue-Green Deployment Start ===="
+
 cd /home/ec2-user/app
 
-# .env 로드
+# Load ENV
 if [ -f .env ]; then
   export $(grep -v '^#' .env | xargs)
 fi
 
-echo "=== 🔍 Checking current live container ==="
+echo "🔄 Pulling latest backend image..."
+docker pull ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
 
-# 현재 라이브 컨테이너 판단 (blue or green)
+# Detect current LIVE
+echo "🔍 Detecting current LIVE..."
+
 if docker ps --format "{{.Names}}" | grep -q "next5-app-blue"; then
   LIVE="blue"
   IDLE="green"
@@ -241,43 +234,44 @@ else
   IDLE="blue"
 fi
 
-echo "🔵 LIVE: $LIVE"
-echo "🟢 IDLE: $IDLE"
-echo "======================================"
+echo "LIVE: $LIVE"
+echo "IDLE: $IDLE"
+echo "=============================================="
 
-echo "=== 📦 Pulling latest backend image ==="
-docker pull ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest
+# Start IDLE container with new image
+echo "🚀 Starting IDLE container → next5-app-$IDLE"
+docker-compose up -d next5-app-$IDLE
 
-echo "=== 🚀 Deploying to IDLE container: $IDLE ==="
-docker-compose up -d app-$IDLE
-
-echo "=== ⏳ Health check starting... ==="
+echo "⏳ Running health check on IDLE..."
 
 SUCCESS=false
 for i in {1..20}; do
-  # IDLE 컨테이너의 Docker 네트워크 IP 조회
-  CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' next5-app-$IDLE || echo "")
+  CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' next5-app-$IDLE || true)
 
-  if [ -n "$CONTAINER_IP" ]; then
+  if [ ! -z "$CONTAINER_IP" ]; then
     if curl -fs "http://${CONTAINER_IP}:8080/actuator/health" | grep -q '"status":"UP"'; then
       SUCCESS=true
       break
     fi
   fi
 
-  echo "⏳ Waiting for container to be UP... ($i/20)"
+  echo "Waiting... ($i/20)"
   sleep 3
 done
 
 if [ "$SUCCESS" = false ]; then
   echo "❌ Health check failed! Rolling back..."
-  docker-compose stop app-$IDLE || true
+  docker-compose stop next5-app-$IDLE || true
   exit 1
 fi
 
-echo "✅ Health check passed!"
+echo "✅ IDLE container is healthy!"
 
-echo "=== 🔑 Logging in to NPM (session-based) ==="
+##########################################################
+# 🔐 NPM 자동 전환
+##########################################################
+
+echo "🔐 Logging in to NPM..."
 
 LOGIN_RESPONSE=$(curl -s -X POST "http://${NPM_HOST}/api/tokens" \
   -H "Content-Type: application/json" \
@@ -287,43 +281,54 @@ TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.token')
 
 if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
   echo "❌ NPM login failed!"
-  echo "Response: $LOGIN_RESPONSE"
+  echo "$LOGIN_RESPONSE"
   exit 1
 fi
 
-echo "🔑 NPM login OK, token issued."
+echo "🔑 NPM login success!"
 
-echo "=== 🔄 Switching NPM Proxy to IDLE container ==="
+echo "🔄 Switching NPM forward host → next5-app-$IDLE"
 
-# forwardHost만 blue/green으로 바꿔주는 요청
-curl -s -X PUT "http://${NPM_HOST}/api/nginx/proxy-hosts/${NPM_PROXY_ID}" \
+UPDATE_RESULT=$(curl -s -X PUT "http://${NPM_HOST}/api/nginx/proxy-hosts/${NPM_PROXY_ID}" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   --data "{
-    \"forwardScheme\": \"http\",
-    \"forwardHost\": \"next5-app-$IDLE\",
-    \"forwardPort\": 8080
-  }" >/dev/null
+    \"forward_scheme\": \"http\",
+    \"forward_host\": \"next5-app-$IDLE\",
+    \"forward_port\": 8080
+  }")
 
-echo "🎯 NPM switched → LIVE is now next5-app-$IDLE"
+echo "NPM API Response:"
+echo "$UPDATE_RESULT"
 
-echo "=== 🧹 Cleaning up old LIVE container ==="
-docker-compose stop app-$LIVE || true
-docker-compose rm -f app-$LIVE || true
+if ! echo "$UPDATE_RESULT" | grep -q "\"id\":"; then
+  echo "❌ NPM update failed! Check ID / API / NPM error."
+  exit 1
+fi
 
-echo "=== 📄 Saving deploy info ==="
+echo "🎯 NPM is now routing to → next5-app-$IDLE"
 
-IMAGE_SHA=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest || echo "unknown")
+##########################################################
+# 🔥 LIVE 교체 처리
+##########################################################
 
-cat > deployed_version.txt <<EOF2
+echo "🧹 Removing previous LIVE container → next5-app-$LIVE"
+
+docker-compose stop next5-app-$LIVE || true
+docker-compose rm -f next5-app-$LIVE || true
+
+echo "📄 Saving deployment info..."
+
+IMAGE_SHA=$(docker inspect --format='{{index .RepoDigests 0}}' \
+  ghcr.io/prgrms-aibe-devcourse/aibe3-finalproject-team4-backend:latest || echo "unknown")
+
+cat > deployed_version.txt <<EOF
 LIVE=$IDLE
 DEPLOYED_AT=$(date '+%Y-%m-%d %H:%M:%S')
-IMAGE_SHA=$IMAGE_SHA
-EOF2
-
-echo "🎉 Deployment complete → ACTIVE: next5-app-$IDLE"
-
+IMAGE=$IMAGE_SHA
 EOF
+
+echo "🎉 Deployment Completed Successfully!"
 
 chmod +x deploy.sh
 
@@ -352,8 +357,8 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: 
-        - 'next5-app-001:8080'
-        - 'next5-app-002:8080'
+        - 'next5-app-green:8080'
+        - 'next5-app-blue:8080'
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
