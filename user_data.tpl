@@ -178,8 +178,8 @@ GOOGLE_CLOUD_CREDENTIALS_JSON=${google_cloud_credentials_json}
 PIXABAY_ACCESS_KEY=${pixabay_access_key}
 PIXABAY_BASE_URL=${pixabay_base_url}
 
-NPM_HOST=localhost:81
-NPM_PROXY_ID=1
+NPM_HOST=${npm_host}
+NPM_PROXY_ID=${npm_proxy_id}
 NPM_EMAIL=${npm_admin_email}
 NPM_PASSWORD=${npm_admin_password}
 
@@ -251,7 +251,7 @@ for i in {1..20}; do
   CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' next5-app-$IDLE || true)
 
   if [ ! -z "$CONTAINER_IP" ]; then
-    if curl -fs "http://${CONTAINER_IP}:8080/actuator/health" | grep -q '"status":"UP"'; then
+    if curl -fs "http://$CONTAINER_IP:8080/actuator/health" | grep -q '"status":"UP"'; then
       SUCCESS=true
       break
     fi
@@ -275,9 +275,9 @@ echo "✅ IDLE container is healthy!"
 
 echo "🔐 Logging in to NPM..."
 
-LOGIN_RESPONSE=$(curl -s -X POST "http://${NPM_HOST}/api/tokens" \
+LOGIN_RESPONSE=$(curl -s -X POST "http://$NPM_HOST/api/tokens" \
   -H "Content-Type: application/json" \
-  --data "{\"identity\": \"${NPM_EMAIL}\", \"secret\": \"${NPM_PASSWORD}\"}")
+  --data "{\"identity\": \"$NPM_EMAIL\", \"secret\": \"$NPM_PASSWORD\"}")
 
 TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.token')
 
@@ -291,8 +291,8 @@ echo "🔑 NPM login success!"
 
 echo "🔄 Switching NPM forward host → next5-app-$IDLE"
 
-UPDATE_RESULT=$(curl -s -X PUT "http://${NPM_HOST}/api/nginx/proxy-hosts/${NPM_PROXY_ID}" \
-  -H "Authorization: Bearer ${TOKEN}" \
+UPDATE_RESULT=$(curl -s -X PUT "http://$NPM_HOST/api/nginx/proxy-hosts/$NPM_PROXY_ID" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   --data "{
     \"forward_scheme\": \"http\",

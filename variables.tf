@@ -230,3 +230,15 @@ variable "google_cloud_credentials_json" {
   type      = string
   sensitive = true
 }
+
+variable "npm_host" {
+  type        = string
+  description = "NPM Host"
+  default     = "localhost:81"
+}
+
+variable "npm_proxy_id" {
+  type        = string
+  description = "NPM Proxy ID"
+  default     = "1"
+}

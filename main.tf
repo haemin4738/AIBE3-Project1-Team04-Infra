@@ -193,6 +193,8 @@ locals {
     redis_password         = var.redis_password
     ghcr_owner             = var.ghcr_owner
     ghcr_token             = var.ghcr_token
+    npm_host               = var.npm_host
+    npm_proxy_id           = var.npm_proxy_id
     npm_admin_email        = var.npm_admin_email
     npm_admin_password     = var.npm_admin_password
     jwt_secret             = var.jwt_secret
